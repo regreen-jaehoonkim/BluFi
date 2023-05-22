@@ -362,24 +362,35 @@ public final class BluFiMangager: NSObject {
             return true
         }
     }
+
     
-    public func writeCustomData(_ data: [UInt8], _ needResponse: Bool) -> Promise<[UInt8]> {
+    writeCustomData(_ data: [UInt8], _ needResponse: Bool) -> Promise<[UInt8]> {
         return writeCustomData(data, needResponse ? self.WRITE_TIMEOUT_SECOND : 0)
     }
     
+    
     public func writeCustomData(_ data: [UInt8], _ timeout_sec: Int = 0) -> Promise<[UInt8]> {
         return async {
+
+            // 데이터 유형 및 하위 유형에 대한 값 설정
             let type = self.getTypeValue(type: Type.Data.PACKAGE_VALUE, subtype: Type.Data.SUBTYPE_CUSTOM_DATA)
+            
+            // 응답이 필요하지 여부 확인 
             let needResponse = timeout_sec > 0
+            // 프레임 쓰기 및 응답 대기
             let respData = try await(self.writeFrame(type, data, timeout_sec, needResponse))
+            
+            // 응답이 필요하지 않은 경우 빈 배열 반환
             if !needResponse {
                 return []
             }
+            // 수신한 응답 패키지의 유효성 확인
             if !self.validPackage(respData, Type.Data.PACKAGE_VALUE, Type.Data.SUBTYPE_CUSTOM_DATA) {
+                // 시퀀스 재설정 및 잘못된 응답으로 예외 throw
                 self.resetSeq()
                 throw BluFiError("Invalid response for custom data")
             }
-            
+            // 응답 데이터 배열 반환
             return respData.getDataArray()
         }
     }
@@ -397,13 +408,18 @@ public final class BluFiMangager: NSObject {
             var strList = [WiFiEntry]()
             var idx = 0
             while idx <  arrList.count {
+                // SSID 길이 및 RSSI 정보 추출
                 let len = Int(arrList[idx+0])
                 let rssi = Int8(bitPattern: arrList[idx+1])
                 let offsetBegin = idx + 2
                 let offsetEnd = idx + len + 1
+                
+                // Wi-Fi 목록 배열 길이 확인
                 if offsetEnd > arrList.count {
                     throw BluFiError("Invalid wifi list array len")
                 }
+
+                // SSID 정보 추출 및 Wi-FiEntry 객체 생성 
                 let nameArr = Array(arrList[offsetBegin..<offsetEnd])
                 let name = String(bytes: nameArr, encoding: .utf8)
                 strList.append(WiFiEntry(name!, rssi))
@@ -431,31 +447,46 @@ public final class BluFiMangager: NSObject {
     
     public func getDeviceStatus() -> Promise<[UInt8]> {
         return async {
+            // Wi-Fi 상태 조회 명령의 타입 값 설정
             let type = self.getTypeValue(type: Type.Ctrl.PACKAGE_VALUE, subtype: Type.Ctrl.SUBTYPE_GET_WIFI_STATUS)
+            
+            // Wi-Fi 상태 조회 명령 전송 및 응답 수신
             let respData = try await(self.writeFrame(type, [], self.WRITE_TIMEOUT_SECOND, true))
+            
+            // 응답 패키지 유효성 검사
             if !self.validPackage(respData, Type.Data.PACKAGE_VALUE, Type.Data.SUBTYPE_WIFI_CONNECTION_STATE) {
                 self.resetSeq()
                 throw BluFiError("Invalid response for getDeviceStatus")
             }
+            // 응답 데이터 반환 
             return respData.getDataArray()
         }
     }
     
+    // 와이파이 연결 설정
     public func setWiFiSta(_ ssid: String, _ password: String) -> Promise<[UInt8]> {
         return async {
+             // SSID 설정 명령 타입 설정
             var type = self.getTypeValue(type: Type.Data.PACKAGE_VALUE, subtype: Type.Data.SUBTYPE_STA_WIFI_SSID)
+            // SSID 데이터 전송
             _ = try await(self.writeFrame(type, [UInt8](ssid.utf8), self.WRITE_TIMEOUT_SECOND, false))
             
+            // 패스워드 설정 명령 타입 설정
             type = self.getTypeValue(type: Type.Data.PACKAGE_VALUE, subtype: Type.Data.SUBTYPE_STA_WIFI_PASSWORD)
+            // 패스워드 설정 명령 타입 설정
             _ = try await(self.writeFrame(type, [UInt8](password.utf8), self.WRITE_TIMEOUT_SECOND, false))
-            
+            // Wi-Fi 연결 명령 타입 설정
             type = self.getTypeValue(type: Type.Ctrl.PACKAGE_VALUE, subtype: Type.Ctrl.SUBTYPE_CONNECT_WIFI)
+            
+            // Wi-Fi 연결 명령 전송 및 응답 수신
             let respData = try await(self.writeFrame(type, [UInt8](password.utf8), self.WRITE_TIMEOUT_SECOND, true))
             
+            // 응답 패키지 유효성 검사
             if !self.validPackage(respData, Type.Data.PACKAGE_VALUE, Type.Data.SUBTYPE_WIFI_CONNECTION_STATE) {
                 self.resetSeq()
                 throw BluFiError("Invalid response for WiFi status")
             }
+            // 응답 데이터 반환
             let dataArray = respData.getDataArray()
             if dataArray.count < 3 {
                 throw BluFiError("Invalid data size")
